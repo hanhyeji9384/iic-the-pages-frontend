@@ -8,6 +8,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell, Settings, ChevronDown } from 'lucide-react';
+// THE PAGES 이미지 로고 임포트
+import titleLogo from '../../assets/logo.avif';
 
 // 헤더가 받는 속성(props) 타입 정의
 interface HeaderProps {
@@ -41,6 +43,7 @@ interface HeaderProps {
 
 // ============================================================
 // 메뉴 구조 정의 (계층형 네비게이션)
+// 레퍼런스 프로젝트와 동일한 구조 유지
 // ============================================================
 const MENU_STRUCTURE = {
   // 최상위 메뉴 (Level 1)
@@ -84,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLevel1Change,
   onLevel2Change,
   onTabChange,
-  totalStores = 0,
+  totalStores = 110,
   onSettingsClick,
   onLogoClick,
 }) => {
@@ -97,11 +100,13 @@ export const Header: React.FC<HeaderProps> = ({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 현재 Level 1에 해당하는 Level 2 메뉴 목록
-  const level2Items = MENU_STRUCTURE.level2[activeLevel1] || [];
+  const level2Items = (
+    MENU_STRUCTURE.level2 as Record<string, { key: string; label: string }[]>
+  )[activeLevel1] || [];
 
   // Level 2 키에 해당하는 Level 3 탭 목록을 가져오는 함수
   const getLevel3Items = (level2Key: string) =>
-    MENU_STRUCTURE.level3[level2Key as keyof typeof MENU_STRUCTURE.level3] || [];
+    (MENU_STRUCTURE.level3 as Record<string, { key: string; label: string }[]>)[level2Key] || [];
 
   // Level 2 메뉴에 마우스가 들어올 때: 드롭다운 표시
   const handleLevel2Enter = useCallback((key: string) => {
@@ -161,23 +166,18 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* 왼쪽: 로고 + Level 1 네비게이션 */}
           <div className="flex items-center space-x-6">
-            {/* THE PAGES 로고 (텍스트) */}
-            <button
+            {/* THE PAGES 이미지 로고: 클릭하면 랜딩 페이지로 돌아감 */}
+            <img
+              src={titleLogo}
+              alt="THE PAGES"
+              className="h-[32px] w-auto mr-2 cursor-pointer"
               onClick={onLogoClick}
-              className="flex items-center cursor-pointer border-none bg-transparent outline-none"
-            >
-              <span
-                className="text-[15px] font-light tracking-[0.3em] text-slate-900 uppercase"
-                style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}
-              >
-                THE PAGES
-              </span>
-            </button>
+            />
 
             {/* 구분선 */}
             <div className="h-5 w-px bg-gray-200" />
 
-            {/* Level 1 메뉴 버튼들 */}
+            {/* Level 1 메뉴 버튼들 (Expansion / Prism) */}
             <nav className="flex items-center space-x-1">
               {MENU_STRUCTURE.level1.map((item) => (
                 <button
@@ -230,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Settings className="w-4 h-4" />
               </button>
 
-              {/* 사용자 아바타 (초기) */}
+              {/* 사용자 아바타 (이니셜 폴백) */}
               <div className="h-8 w-8 rounded-full bg-slate-200 border-2 border-white shadow-sm flex items-center justify-center cursor-pointer ml-1">
                 <span className="text-xs font-semibold text-slate-600">IIC</span>
               </div>
@@ -253,10 +253,12 @@ export const Header: React.FC<HeaderProps> = ({
                   <div
                     key={item.key}
                     className="relative"
-                    onMouseEnter={() => hasChildren ? handleLevel2Enter(item.key) : undefined}
+                    onMouseEnter={() =>
+                      hasChildren ? handleLevel2Enter(item.key) : undefined
+                    }
                     onMouseLeave={hasChildren ? handleLevel2Leave : undefined}
                   >
-                    {/* Level 2 버튼 */}
+                    {/* Level 2 버튼: 활성화 시 파란색 하단 밑줄 표시 */}
                     <button
                       onClick={() => {
                         onLevel2Change(item.key);
@@ -276,7 +278,7 @@ export const Header: React.FC<HeaderProps> = ({
                       `}
                     >
                       <span>{item.label}</span>
-                      {/* 하위 메뉴가 있으면 화살표 아이콘 표시 */}
+                      {/* 하위 메뉴가 있으면 화살표 아이콘 표시 (hover 시 뒤집힘) */}
                       {hasChildren && (
                         <ChevronDown
                           className={`w-3 h-3 transition-transform duration-200 ${
@@ -304,7 +306,9 @@ export const Header: React.FC<HeaderProps> = ({
                             return (
                               <button
                                 key={tab.key}
-                                onClick={() => handleLevel3Click(item.key, tab.key)}
+                                onClick={() =>
+                                  handleLevel3Click(item.key, tab.key)
+                                }
                                 className={`
                                   w-full text-left px-4 py-2 text-xs font-medium
                                   transition-all duration-100
@@ -316,7 +320,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 `}
                               >
                                 <div className="flex items-center space-x-2.5">
-                                  {/* 현재 탭 표시 점 */}
+                                  {/* 현재 탭 표시 점: 활성 탭은 파란색 */}
                                   <span
                                     className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${
                                       isTabActive ? 'bg-blue-600' : 'bg-gray-300'
@@ -341,7 +345,7 @@ export const Header: React.FC<HeaderProps> = ({
         {activeLevel1 === 'Prism' && level2Items.length === 0 && (
           <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/60">
             <span className="text-xs text-gray-400 italic">
-              Prism — Coming Soon
+              Prism – Coming Soon
             </span>
           </div>
         )}
