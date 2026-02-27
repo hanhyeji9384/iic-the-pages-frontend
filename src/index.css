@@ -1,0 +1,207 @@
+/* ============================================================
+   IIC THE PAGES - 글로벌 CSS 설정
+   이 파일은 앱 전체에 적용되는 기본 스타일을 정의합니다.
+   ============================================================ */
+
+/* Google Fonts 임포트: 프리미엄 감성의 타이포그래피 */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
+
+/* Tailwind CSS v4 기본 설정 */
+@import "tailwindcss";
+
+/* ============================================================
+   CSS 변수 (디자인 토큰)
+   앱 전체에서 일관된 색상과 스타일 값을 사용하기 위한 변수들
+   ============================================================ */
+:root {
+  /* 배경색 */
+  --color-bg-primary: #f8f9fb;    /* 페이지 배경 - 연한 회색빛 흰색 */
+  --color-bg-card: #ffffff;       /* 카드 배경 - 순백색 */
+
+  /* 파이프라인 상태 색상 */
+  --color-status-plan: #64748B;       /* Plan: 슬레이트 회색 */
+  --color-status-confirm: #9694FF;    /* Confirm: 보라색 */
+  --color-status-contract: #EE99C2;   /* Contract: 핑크 */
+  --color-status-space: #0ea5e9;      /* Space: 하늘색 */
+  --color-status-open: #7FC7D9;       /* Open: 청록색 */
+
+  /* 텍스트 색상 */
+  --color-text-primary: #0f172a;    /* 주요 텍스트 - 거의 검정 */
+  --color-text-secondary: #64748b;  /* 보조 텍스트 - 회색 */
+  --color-text-muted: #94a3b8;      /* 흐린 텍스트 - 연회색 */
+
+  /* 테두리 */
+  --color-border: #e2e8f0;  /* 기본 테두리 색상 */
+
+  /* 폰트 패밀리 */
+  --font-primary: 'Inter', 'Noto Sans KR', 'Noto Sans', sans-serif;
+  --font-display: 'Outfit', 'Inter', sans-serif;
+
+  /* 그림자 (카드 깊이감 표현) */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* ============================================================
+   기본 초기화
+   브라우저마다 다른 기본 스타일을 통일합니다.
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* 폰트 렌더링 최적화 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-primary);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  /* 스크롤바가 있어도 레이아웃이 흔들리지 않도록 */
+  overflow: hidden;
+}
+
+/* ============================================================
+   반응형 폰트 스케일
+   화면 크기에 따라 전체 폰트 크기를 자동으로 조정합니다.
+   - 기본 (1440px 미만): 13px
+   - 1440px 이상: 14px
+   - 1920px 이상 (FHD): 15px
+   - 2560px 이상 (QHD): 16px
+   ============================================================ */
+:root {
+  font-size: 13px;
+}
+
+@media (min-width: 1440px) {
+  :root {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    font-size: 16px;
+  }
+}
+
+/* ============================================================
+   스크롤바 커스텀 스타일
+   앱 특유의 얇고 세련된 스크롤바
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================
+   애니메이션 유틸리티
+   슬라이드인, 페이드인 등 공통 애니메이션
+   ============================================================ */
+
+/* 오른쪽에서 슬라이드인 (상세 패널 등장용) */
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* 페이드인 (부드럽게 나타나는 효과) */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 위에서 아래로 나타나는 효과 (드롭다운용) */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tailwind animate-in 클래스와 연동 */
+.animate-in {
+  animation-duration: 200ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.slide-in-from-right {
+  animation-name: slide-in-from-right;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-top {
+  animation-name: slide-down;
+}
+
+.duration-200 { animation-duration: 200ms; }
+.duration-300 { animation-duration: 300ms; }
+.duration-400 { animation-duration: 400ms; }
+.duration-500 { animation-duration: 500ms; }
+
+/* ============================================================
+   공통 컴포넌트 스타일 (Tailwind 보완)
+   자주 쓰이는 복합 스타일 조합을 클래스로 정의
+   ============================================================ */
+
+/* 프리미엄 카드 스타일 */
+.card-premium {
+  background: white;
+  border-radius: 32px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+}
+
+/* 반투명 유리 효과 (glassmorphism) */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}

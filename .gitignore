@@ -1,0 +1,28 @@
+# 의존성 패키지 (npm install로 재설치 가능)
+node_modules/
+
+# 빌드 결과물 (배포 시 자동 생성)
+dist/
+build/
+
+# 환경변수 파일 (보안 민감 정보)
+.env
+.env.local
+.env.*.local
+
+# IDE 설정 파일
+.idea/
+.vscode/
+
+# 시스템 파일
+.DS_Store
+Thumbs.db
+
+# 로그 파일
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript 빌드 캐시
+*.tsbuildinfo
