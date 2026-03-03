@@ -66,24 +66,53 @@ src/
 → 이 프로젝트에서는 버전 없이 `@radix-ui/react-xxx`로 사용
 → `src/components/ui/utils.ts`에 cn() 함수 별도 정의 (shadcn/ui용)
 
-## 현재 구현 상태
+## 현재 구현 상태 (2026-03-03 기준)
 - LandingPage: 완료 (Expansion/Prism 선택 화면)
 - Header: 완료 (3단계 네비게이션)
 - ProgressBoard: 완료 (파이프라인 현황 보드, KPI 카드)
 - PipelineList: 완료 (필터링 + 정렬 테이블)
-- ComingSoon: 완료 (미구현 화면 플레이스홀더)
-- App.tsx: 완료 (전체 상태 관리 뼈대)
+- DashboardView: 완료 (분석 차트)
+- PnLView: 완료 (손익계산서)
+- ScheduleView: 완료 (캘린더)
+- MapCanvas: 완료 (Google Maps 연동)
+- StoreDetail: 완료 (오픈 매장 상세 패널)
+- CandidateStoreDetail: 완료 (파이프라인 매장 상세 패널)
+- Sidebar: 완료 (필터 + 매장 목록)
+- LineManagerPanel: 완료 (파이프라인 연결선 도구)
+- AddEntityPanel: 완료 (매장 추가 도구)
+- TrafficManagerPanel: 완료 (트래픽 구역 도구)
+- SettingsDialog: 완료 (설정 다이얼로그)
+- App.tsx: 완료 — 모든 컴포넌트 통합 완료
 
-## 미구현 (추후 작업)
-- PnLView (손익계산서)
-- ScheduleView (캘린더)
-- MapCanvas (Google Maps 연동)
-- StoreDetail / CandidateStoreDetail 패널
-- DashboardView (분석 차트)
-- Sidebar (필터 + 매장 목록)
-- SettingsDialog
+## App.tsx 통합 패턴 (중요)
+- allStores: 서버에서 로드 (`dataClient.seed()` + `refreshData()`)
+- renderLeftPanel(): activeTool에 따라 다른 좌측 패널 렌더링
+- filteredStores: showExpirationAlert / showLowSalesAlert / 브랜드/상태/채널/국가 필터 순서로 적용
+- Map/Store Info 탭에서만 renderLeftPanel() + MapCanvas + StoreDetail 오버레이 사용
+- PipelineList, PnL 탭에서도 selectedStore 오버레이 표시 가능
 
 ## Tailwind v4 설정 방식
 - `vite.config.ts`에 `tailwindcss()` 플러그인 직접 추가
 - 별도 `tailwind.config.js` 파일 불필요
 - `src/index.css`에 `@import "tailwindcss"` 선언
+
+## Supabase 백엔드 구조 (2026-03-03 구현)
+- **projectId**: `vypttxusdlwevgmhtczj`
+- **Base URL**: `https://vypttxusdlwevgmhtczj.supabase.co/functions/v1/make-server-51087ee6`
+- **KV 테이블**: `kv_store_51087ee6` (key TEXT PK, value JSONB)
+- **Storage 버킷**: `make-51087ee6-photos`
+- **서버 프레임워크**: Hono (Deno Edge Function)
+- **KV 키 패턴**: `store:iic:{id}`, `store:comp:{id}`, `pipeline:{id}`, `traffic-zone:{id}`, `neg_history:{storeId}`, `checkpoints:{storeId}`, `iic_goals`, `brands_competitor`, `brands_preferred`, `schedule_events`
+
+### 백엔드 파일 위치
+- `src/utils/supabase/info.tsx` — Supabase projectId + publicAnonKey
+- `src/utils/dataClient.ts` — 전체 REST API 클라이언트 (브라우저에서 호출)
+- `src/utils/mockApi.ts` — Mock API (SavedEntity, 오프라인 테스트용)
+- `src/utils/mockLineServer.ts` — Mock 라인 서버 (파이프라인 연결선)
+- `src/supabase/functions/server/index.tsx` — Hono 서버 (Edge Function 배포 대상)
+- `src/supabase/functions/server/kv_store.tsx` — KV Store 래퍼 (Deno 전용, jsr: import)
+- `src/supabase/functions/server/seed_data.ts` — 초기 시딩 데이터
+
+### 주의: kv_store.tsx는 Deno 환경 전용
+- `jsr:@supabase/supabase-js@2.49.8` import 사용 (Node.js 환경에서 실행 불가)
+- Vite 빌드 대상이 아니므로 TypeScript 컴파일 오류는 무시 가능
