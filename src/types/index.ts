@@ -123,6 +123,12 @@ export interface Store {
     expectedOperatingProfitRatio?: number; // 예상 영업이익률 (%)
     estimatedSales?: number;        // 예상 월 매출 (후보 매장용)
     estimatedMargin?: number;       // 예상 마진율 (%)
+    /** P&L 비용 항목 */
+    cogs?: number;                  // 매출원가 (Cost of Goods Sold)
+    personnelCost?: number;         // 인건비
+    depreciation?: number;          // 감가상각비
+    payment?: number;               // 지급수수료
+    others?: number;                // 기타 비용
     /** 연도별 매출 데이터 */
     yearlySales?: {
       year: number;
