@@ -1,8 +1,9 @@
 // ============================================================
 // PnLView 컴포넌트 (P&L = Profit & Loss, 손익계산서)
 // 파이프라인 매장별 손익 항목을 테이블 형식으로 보여줍니다.
-// 행(Row)은 P&L 항목(Sales, COGS, 인건비 등), 열(Column)은 매장명입니다.
-// 매장 열 헤더를 클릭하면 해당 매장의 P&L 수치를 인라인 편집할 수 있습니다.
+// 행(Row)은 P&L 항목(CAPEX, Sales, COGS 등), 열(Column)은 매장명입니다.
+// 매장 열 헤더를 클릭하면 해당 매장의 P&L 수치를 편집할 수 있습니다.
+// [수식 기반] Sales, CAPEX, Rent 3개만 입력하면 나머지 비용은 자동 계산됩니다.
 // ============================================================
 
 import React, { useMemo, useState } from "react";
@@ -58,47 +59,58 @@ interface PnLViewProps {
   onStoreUpdate?: (updatedStore: Store) => Promise<void>;   // 매장 데이터 저장 함수
 }
 
-// P&L 테이블 행 정의 — key는 재무 데이터의 필드명, type은 색상 구분용
+// P&L 테이블 행 정의
+// key: 재무 데이터 필드명, type: 행 색상 구분, formula: 자동 계산 수식 설명
+// type이 "input"인 항목은 직접 입력, "cost"는 수식으로 자동 계산 (rent 제외)
 const PNL_ROWS = [
-  { key: "sales", label: "Sales", type: "revenue" },
-  { key: "cogs", label: "COGS", type: "cost" },
-  { key: "personnel", label: "Personnel", type: "cost" },
-  { key: "rent", label: "Rent", type: "cost" },
-  { key: "depreciation", label: "Depreciation", type: "cost" },
-  { key: "payment", label: "Payment", type: "cost" },
-  { key: "others", label: "Others", type: "cost" },
-  { key: "storeOP", label: "Store-level OP", type: "profit" },
+  { key: "capex", label: "CAPEX", type: "input", formula: null },
+  { key: "sales", label: "Sales", type: "revenue", formula: null },
+  { key: "cogs", label: "COGS", type: "cost", formula: "Sales × 15%" },
+  { key: "personnel", label: "Personnel", type: "cost", formula: "Sales × 13%" },
+  { key: "rent", label: "Rent", type: "cost", formula: null },
+  { key: "depreciation", label: "Depreciation", type: "cost", formula: "CAPEX ÷ 48" },
+  { key: "payment", label: "Payment", type: "cost", formula: "Sales × 2%" },
+  { key: "others", label: "Others", type: "cost", formula: "Sales × 5%" },
+  { key: "storeOP", label: "Store-level OP", type: "profit", formula: "Sales − Σ Costs" },
 ] as const;
 
 // PnLKey: PNL_ROWS에서 사용되는 key들의 타입을 자동으로 추출합니다.
 type PnLKey = (typeof PNL_ROWS)[number]["key"];
 
-// 편집 가능한 P&L 필드 목록 (Store-level OP는 자동 계산이므로 제외)
+// 편집 가능한 P&L 필드 — Sales, CAPEX, Rent 3개만 직접 입력합니다.
+// 나머지 비용 항목(COGS, 인건비, 감가상각, 수수료, 기타)은 수식으로 자동 계산됩니다.
 const EDITABLE_PNL_FIELDS = [
-  { key: "sales", label: "Sales (월 매출)", description: "월간 예상 매출액" },
-  { key: "cogs", label: "COGS (매출원가)", description: "매출원가" },
-  { key: "personnel", label: "Personnel (인건비)", description: "월간 인건비" },
-  { key: "rent", label: "Rent (임차료)", description: "월간 임대료" },
-  { key: "depreciation", label: "Depreciation (감가상각)", description: "월간 감가상각비" },
-  { key: "payment", label: "Payment (지급수수료)", description: "월간 지급수수료" },
-  { key: "others", label: "Others (기타비용)", description: "기타 비용" },
+  { key: "sales", label: "Sales (월 매출)", description: "월간 예상 매출액 — 모든 비용 항목의 기준값" },
+  { key: "capex", label: "CAPEX (투자비)", description: "총 투자비 — Depreciation = CAPEX ÷ 48 으로 월 상각" },
+  { key: "rent", label: "Rent (임차료)", description: "월간 임대료 (직접 입력)" },
 ] as const;
 
-// 매장의 재무 데이터에서 P&L 수치를 추출하는 함수
+// 매장의 재무 데이터에서 수식 기반으로 P&L 수치를 계산하는 함수
+// Sales, CAPEX, Rent 값을 기준으로 나머지 비용을 자동 산출합니다.
 function getStorePnL(store: Store): Record<PnLKey, number> {
   const fin = store.financial as any;
-  // 각 항목의 값을 가져오고, 없으면 0으로 처리합니다.
+  // 3가지 입력값 추출
   const sales = fin?.estimatedSales ?? fin?.monthlySales ?? 0;
-  const cogs = fin?.cogs ?? 0;
-  const personnel = fin?.personnelCost ?? 0;
+  const capex = fin?.capex ?? 0;
   const rent = fin?.monthlyRent ?? 0;
-  const depreciation = fin?.depreciation ?? 0;
-  const payment = fin?.payment ?? 0;
-  const others = fin?.others ?? 0;
-  // Store-level OP는 매출에서 모든 비용을 빼서 자동 계산합니다.
-  const storeOP = sales - cogs - personnel - rent - depreciation - payment - others;
 
-  return { sales, cogs, personnel, rent, depreciation, payment, others, storeOP };
+  // 수식 기반 비용 자동 계산
+  const cogs = sales * 0.15;           // 매출원가 = 매출 × 15%
+  const personnel = sales * 0.13;      // 인건비 = 매출 × 13%
+  const depreciation = capex / 48;     // 감가상각 = 투자비 ÷ 48개월
+  const payment = sales * 0.02;        // 지급수수료 = 매출 × 2%
+  const others = sales * 0.05;         // 기타비용 = 매출 × 5%
+
+  // Store-level OP = 매출 − (원가 + 인건비 + 임차료 + 감가상각 + 수수료 + 기타)
+  const storeOP = sales - (cogs + personnel + rent + depreciation + payment + others);
+
+  return { sales, capex, cogs, personnel, rent, depreciation, payment, others, storeOP };
+}
+
+// 영업이익률(OP Margin %)을 안전하게 계산하는 헬퍼 함수
+function getOPMargin(storeOP: number, sales: number): number {
+  if (!sales || sales === 0) return 0;
+  return (storeOP / sales) * 100;
 }
 
 // P&L 손익계산서 뷰 컴포넌트
@@ -271,7 +283,7 @@ export const PnLView: React.FC<PnLViewProps> = ({
 
   // 필터된 매장들의 P&L 항목별 합계를 계산합니다.
   const totals = useMemo(() => {
-    const result: Record<PnLKey, number> = { sales: 0, cogs: 0, personnel: 0, rent: 0, depreciation: 0, payment: 0, others: 0, storeOP: 0 };
+    const result: Record<PnLKey, number> = { sales: 0, capex: 0, cogs: 0, personnel: 0, rent: 0, depreciation: 0, payment: 0, others: 0, storeOP: 0 };
     for (const store of pipelineStores) {
       const pnl = getStorePnL(store);
       for (const row of PNL_ROWS) {
@@ -282,57 +294,51 @@ export const PnLView: React.FC<PnLViewProps> = ({
   }, [pipelineStores]);
 
   // 매장 헤더 클릭 시 편집 다이얼로그를 여는 함수
+  // Sales, CAPEX, Rent 3개 값만 편집 상태에 로드합니다.
   const handleStoreHeaderClick = (store: Store) => {
-    const pnl = getStorePnL(store);
-    // 현재 P&L 수치들을 편집 상태에 복사합니다.
+    const fin = store.financial as any;
     setEditValues({
-      sales: pnl.sales,
-      cogs: pnl.cogs,
-      personnel: pnl.personnel,
-      rent: pnl.rent,
-      depreciation: pnl.depreciation,
-      payment: pnl.payment,
-      others: pnl.others,
+      sales: fin?.estimatedSales ?? fin?.monthlySales ?? 0,
+      capex: fin?.capex ?? 0,
+      rent: fin?.monthlyRent ?? 0,
     });
     setEditStore(store);
   };
 
-  // 편집 중인 수치로 Store-level OP(매장 영업이익)를 실시간 계산합니다.
-  const editStoreOP = useMemo(() => {
-    const s = editValues.sales || 0;
-    const c = editValues.cogs || 0;
-    const p = editValues.personnel || 0;
-    const r = editValues.rent || 0;
-    const d = editValues.depreciation || 0;
-    const pay = editValues.payment || 0;
-    const o = editValues.others || 0;
-    return s - c - p - r - d - pay - o;
+  // 편집 중인 3개 입력값으로 나머지 비용을 실시간 자동 계산합니다.
+  // 수식: COGS=Sales×15%, Personnel=Sales×13%, Depreciation=CAPEX÷48, Payment=Sales×2%, Others=Sales×5%
+  const editDerived = useMemo(() => {
+    const sales = editValues.sales || 0;
+    const capex = editValues.capex || 0;
+    const rent = editValues.rent || 0;
+    const cogs = sales * 0.15;
+    const personnel = sales * 0.13;
+    const depreciation = capex / 48;
+    const payment = sales * 0.02;
+    const others = sales * 0.05;
+    // OP = 매출 − (원가 + 인건비 + 임차료 + 감가상각 + 수수료 + 기타)
+    const storeOP = sales - (cogs + personnel + rent + depreciation + payment + others);
+    const opMargin = sales > 0 ? (storeOP / sales) * 100 : 0;
+    return { cogs, personnel, depreciation, payment, others, rent, storeOP, opMargin };
   }, [editValues]);
 
-  // 영업이익률(OP Margin %) 실시간 계산
-  const editOPMargin = useMemo(() => {
-    if (!editValues.sales || editValues.sales === 0) return 0;
-    return (editStoreOP / editValues.sales) * 100;
-  }, [editStoreOP, editValues.sales]);
-
-  // P&L 수치를 서버에 저장하는 함수
+  // P&L 수치를 저장하는 함수 — Sales, CAPEX, Rent 3개만 저장합니다.
   const handleSavePnL = async () => {
     if (!editStore || !onStoreUpdate) return;
     setIsSaving(true);
     try {
-      // 편집된 수치를 매장 데이터에 반영합니다.
+      const sales = editValues.sales || 0;
+      const capex = editValues.capex || 0;
+      const rent = editValues.rent || 0;
+      // 편집된 3개 수치만 매장 데이터에 반영합니다.
       const updatedStore: Store = {
         ...editStore,
         financial: {
           ...editStore.financial,
-          estimatedSales: editValues.sales || 0,
-          monthlySales: editValues.sales || 0,
-          cogs: editValues.cogs || 0,
-          personnelCost: editValues.personnel || 0,
-          monthlyRent: editValues.rent || 0,
-          depreciation: editValues.depreciation || 0,
-          payment: editValues.payment || 0,
-          others: editValues.others || 0,
+          estimatedSales: sales,
+          monthlySales: sales,
+          capex: capex,
+          monthlyRent: rent,
         } as any,
       };
       await onStoreUpdate(updatedStore);
@@ -598,27 +604,37 @@ export const PnLView: React.FC<PnLViewProps> = ({
                   {PNL_ROWS.map((row) => {
                     const isProfit = row.type === "profit";   // Store-level OP 행 여부
                     const isRevenue = row.type === "revenue"; // Sales 행 여부
+                    const isInput = row.type === "input";     // CAPEX 행 여부 (직접 입력 항목)
                     const totalVal = totals[row.key];
+                    // 영업이익 행일 때만 전체 OP Margin % 계산
+                    const totalOPMargin = isProfit ? getOPMargin(totals.storeOP, totals.sales) : 0;
 
                     return (
                       <tr
                         key={row.key}
                         className={cn(
                           "border-b border-slate-100 transition-colors hover:bg-slate-50/50",
-                          // 영업이익 행은 상단에 굵은 테두리와 파란 배경
+                          // 영업이익 행: 파란 그라데이션 배경 + 상단 굵은 테두리
                           isProfit && "bg-gradient-to-r from-blue-50/40 to-transparent border-t-2 border-t-slate-200",
-                          // 매출 행은 녹색 배경
-                          isRevenue && "bg-emerald-50/30"
+                          // 매출 행: 녹색 배경
+                          isRevenue && "bg-emerald-50/30",
+                          // CAPEX 행: 앰버(호박색) 배경
+                          isInput && "bg-amber-50/30"
                         )}
                       >
                         {/* 행 레이블 (P&L 항목명, 왼쪽 고정) */}
                         <td
                           className={cn(
                             "py-3 px-4 border-r-2 border-slate-200 sticky left-0 z-10 font-semibold min-[2560px]:text-base",
-                            isProfit ? "bg-blue-50/60 text-blue-800 font-bold" : isRevenue ? "bg-emerald-50/50 text-emerald-800 font-bold" : "bg-white text-slate-700"
+                            isProfit ? "bg-blue-50/60 text-blue-800 font-bold"
+                              : isRevenue ? "bg-emerald-50/50 text-emerald-800 font-bold"
+                              : isInput ? "bg-amber-50/50 text-amber-800 font-bold"
+                              : "bg-white text-slate-700"
                           )}
                         >
-                          {row.label}
+                          <div className="flex items-center gap-2">
+                            <span>{row.label}</span>
+                          </div>
                         </td>
                         {/* 합계 열 */}
                         <td
@@ -626,15 +642,32 @@ export const PnLView: React.FC<PnLViewProps> = ({
                             "py-3 px-4 text-right border-r-2 border-slate-300 font-bold tabular-nums min-[2560px]:text-base",
                             isProfit
                               ? totalVal >= 0 ? "text-blue-700 bg-blue-50/60" : "text-red-600 bg-red-50/40"
-                              : isRevenue ? "text-emerald-700 bg-emerald-50/40" : "text-slate-800 bg-slate-50/40"
+                              : isRevenue ? "text-emerald-700 bg-emerald-50/40"
+                              : isInput ? "text-amber-700 bg-amber-50/40"
+                              : "text-slate-800 bg-slate-50/40"
                           )}
                         >
-                          {totalVal !== 0 ? formatCurrencyWithUnit(totalVal) : "-"}
+                          {/* 영업이익 행은 금액 + OP Margin % 배지 표시 */}
+                          {isProfit ? (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span>{totalVal !== 0 ? formatCurrencyWithUnit(totalVal) : "-"}</span>
+                              <span className={cn(
+                                "text-[10px] min-[2560px]:text-xs font-semibold px-1.5 py-0.5 rounded-full",
+                                totalOPMargin >= 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"
+                              )}>
+                                {totalOPMargin.toFixed(1)}%
+                              </span>
+                            </div>
+                          ) : (
+                            totalVal !== 0 ? formatCurrencyWithUnit(totalVal) : "-"
+                          )}
                         </td>
                         {/* 매장별 P&L 수치 */}
                         {pipelineStores.map((store) => {
                           const pnl = getStorePnL(store);
                           const val = pnl[row.key];
+                          // 영업이익 행일 때만 개별 매장 OP Margin % 계산
+                          const storeOPMargin = isProfit ? getOPMargin(pnl.storeOP, pnl.sales) : 0;
                           return (
                             <td
                               key={store.id}
@@ -644,10 +677,25 @@ export const PnLView: React.FC<PnLViewProps> = ({
                                 isProfit && val < 0 && "text-red-500",
                                 isProfit && val >= 0 && "text-blue-600",
                                 // 매출은 녹색
-                                isRevenue && "text-emerald-700"
+                                isRevenue && "text-emerald-700",
+                                // CAPEX는 앰버
+                                isInput && "text-amber-700"
                               )}
                             >
-                              {val !== 0 ? formatCurrencyWithUnit(val) : "-"}
+                              {/* 영업이익 행은 금액 + OP Margin % 배지 표시 */}
+                              {isProfit ? (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span>{val !== 0 ? formatCurrencyWithUnit(val) : "-"}</span>
+                                  <span className={cn(
+                                    "text-[9px] min-[2560px]:text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                                    storeOPMargin >= 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-500"
+                                  )}>
+                                    {storeOPMargin.toFixed(1)}%
+                                  </span>
+                                </div>
+                              ) : (
+                                val !== 0 ? formatCurrencyWithUnit(val) : "-"
+                              )}
                             </td>
                           );
                         })}
@@ -662,6 +710,7 @@ export const PnLView: React.FC<PnLViewProps> = ({
       </div>
 
       {/* P&L 편집 다이얼로그 — 매장 헤더 클릭 시 열립니다. */}
+      {/* Sales, CAPEX, Rent 3개만 입력하면 나머지는 수식으로 자동 계산됩니다. */}
       <Dialog open={!!editStore} onOpenChange={(open) => { if (!open) setEditStore(null); }}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
@@ -675,7 +724,7 @@ export const PnLView: React.FC<PnLViewProps> = ({
             </DialogDescription>
           </DialogHeader>
 
-          {/* 편집 필드 목록 */}
+          {/* 편집 필드 — 3개의 직접 입력 항목 */}
           <div className="space-y-4 py-3 max-h-[65vh] overflow-y-auto pr-1">
             {EDITABLE_PNL_FIELDS.map((field) => (
               <div key={field.key} className="space-y-1.5">
@@ -720,6 +769,30 @@ export const PnLView: React.FC<PnLViewProps> = ({
               </div>
             ))}
 
+            {/* 자동 계산 항목 미리보기 (읽기 전용) */}
+            <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
+              <p className="text-[11px] font-semibold text-slate-500 mb-2">자동 계산 항목</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {[
+                  { label: "COGS", formula: "Sales × 15%", value: editDerived.cogs },
+                  { label: "Personnel", formula: "Sales × 13%", value: editDerived.personnel },
+                  { label: "Depreciation", formula: "CAPEX ÷ 48", value: editDerived.depreciation },
+                  { label: "Payment", formula: "Sales × 2%", value: editDerived.payment },
+                  { label: "Others", formula: "Sales × 5%", value: editDerived.others },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-medium text-slate-600">{item.label}</span>
+                      <span className="text-[9px] text-slate-400 bg-slate-50 px-1 py-0.5 rounded">{item.formula}</span>
+                    </div>
+                    <span className="text-[11px] font-mono tabular-nums text-slate-700">
+                      {item.value !== 0 ? formatCurrencyWithUnit(Math.round(item.value)) : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Store-level OP 자동 계산 결과 표시 (읽기 전용) */}
             <div className="mt-4 pt-4 border-t-2 border-slate-200">
               <div className="flex items-center justify-between">
@@ -728,16 +801,16 @@ export const PnLView: React.FC<PnLViewProps> = ({
                   {/* 영업이익 금액 — 음수면 빨간색 */}
                   <span className={cn(
                     "text-lg font-bold tabular-nums",
-                    editStoreOP >= 0 ? "text-blue-700" : "text-red-600"
+                    editDerived.storeOP >= 0 ? "text-blue-700" : "text-red-600"
                   )}>
-                    ₩{editStoreOP !== 0 ? formatCurrencyWithUnit(editStoreOP) : "0"}
+                    ₩{editDerived.storeOP !== 0 ? formatCurrencyWithUnit(editDerived.storeOP) : "0"}
                   </span>
                   {/* 영업이익률 배지 */}
                   <span className={cn(
                     "text-xs font-semibold px-2 py-0.5 rounded-full",
-                    editOPMargin >= 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"
+                    editDerived.opMargin >= 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-600"
                   )}>
-                    {editOPMargin.toFixed(1)}%
+                    {editDerived.opMargin.toFixed(1)}%
                   </span>
                 </div>
               </div>
