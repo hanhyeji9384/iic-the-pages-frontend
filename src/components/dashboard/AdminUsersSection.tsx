@@ -1,3 +1,7 @@
+// 관리자 전용 계정 관리 화면
+// - 사용자 목록 조회, 역할 변경, 활성/비활성 토글, 추가/수정/삭제 기능 제공
+// - 실제 서버 없이 브라우저 로컬스토리지에 데이터를 저장하는 Mock 방식으로 동작합니다
+//   (LocalStorage = 브라우저에 내장된 임시 저장 공간. 서버 없이도 데이터 보관 가능)
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Users,
@@ -19,43 +23,109 @@ import {
   KeyRound,
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { supabase } from "../../utils/supabase/client";
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
-import { createClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+// 사용자 프로필 데이터 구조 정의 (각 항목이 어떤 정보인지 타입으로 명시)
 interface UserProfile {
-  id: string;
-  auth_id: string | null;
-  email: string;
-  name: string;
-  role: "admin" | "editor" | "viewer";
-  department: string | null;
-  avatar_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  id: string;           // 고유 식별자
+  auth_id: string | null; // 인증 시스템 연결 ID (Mock에서는 항상 null)
+  email: string;        // 이메일 주소
+  name: string;         // 표시 이름
+  role: "admin" | "editor" | "viewer"; // 역할: 관리자/편집자/뷰어
+  department: string | null; // 부서 (없을 수 있음)
+  avatar_url: string | null; // 프로필 사진 URL (없을 수 있음)
+  is_active: boolean;   // 활성 상태 여부
+  created_at: string;   // 생성 일시 (ISO 형식 문자열)
+  updated_at: string;   // 수정 일시 (ISO 형식 문자열)
 }
 
 type RoleBadge = "admin" | "editor" | "viewer";
 
+// 역할별 표시 설정 (색상, 아이콘 등)
 const ROLE_CONFIG: Record<RoleBadge, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   admin:  { label: "Admin",  color: "text-red-700",    bg: "bg-red-50 border-red-200",    icon: Shield },
   editor: { label: "Editor", color: "text-amber-700",  bg: "bg-amber-50 border-amber-200", icon: Pencil },
   viewer: { label: "Viewer", color: "text-blue-700",   bg: "bg-blue-50 border-blue-200",   icon: Eye },
 };
 
-// ─── Helper ──────────────────────────────────────────────────────────────────
+// ─── Mock 스토리지 키 ─────────────────────────────────────────────────────────
 
-const SERVER_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-ed83bf0f`;
+// 로컬스토리지에서 사용자 데이터를 저장/불러올 때 사용하는 키 이름
+const MOCK_STORAGE_KEY = "thepages_mock_users";
 
-async function getAccessToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || publicAnonKey;
+// 앱 최초 실행 시 로컬스토리지가 비어있으면 삽입할 샘플 사용자 3명
+const INITIAL_MOCK_USERS: UserProfile[] = [
+  {
+    id: "mock-1",
+    auth_id: null,
+    email: "admin@uli.com",
+    name: "관리자",
+    role: "admin",
+    department: "Expansion",
+    avatar_url: null,
+    is_active: true,
+    created_at: "2024-01-15T09:00:00Z",
+    updated_at: "2024-01-15T09:00:00Z",
+  },
+  {
+    id: "mock-2",
+    auth_id: null,
+    email: "editor@uli.com",
+    name: "편집자",
+    role: "editor",
+    department: "Design",
+    avatar_url: null,
+    is_active: true,
+    created_at: "2024-03-20T10:00:00Z",
+    updated_at: "2024-03-20T10:00:00Z",
+  },
+  {
+    id: "mock-3",
+    auth_id: null,
+    email: "viewer@uli.com",
+    name: "뷰어",
+    role: "viewer",
+    department: null,
+    avatar_url: null,
+    is_active: true,
+    created_at: "2024-06-01T14:00:00Z",
+    updated_at: "2024-06-01T14:00:00Z",
+  },
+];
+
+// ─── Mock 스토리지 헬퍼 함수들 ────────────────────────────────────────────────
+
+/**
+ * 로컬스토리지에서 사용자 목록을 읽어옵니다.
+ * 데이터가 없으면 초기 샘플 3명을 자동으로 저장한 뒤 반환합니다.
+ */
+function loadUsersFromStorage(): UserProfile[] {
+  try {
+    const raw = localStorage.getItem(MOCK_STORAGE_KEY);
+    if (!raw) {
+      // 처음 실행 시: 샘플 데이터를 로컬스토리지에 저장
+      localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(INITIAL_MOCK_USERS));
+      return INITIAL_MOCK_USERS;
+    }
+    return JSON.parse(raw) as UserProfile[];
+  } catch {
+    // JSON 파싱 오류 시 샘플 데이터로 복구
+    return INITIAL_MOCK_USERS;
+  }
 }
 
+/**
+ * 사용자 목록 전체를 로컬스토리지에 저장합니다.
+ */
+function saveUsersToStorage(users: UserProfile[]): void {
+  localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(users));
+}
+
+// ─── 날짜 포맷 헬퍼 ──────────────────────────────────────────────────────────
+
+// ISO 날짜 문자열을 "YYYY. MM. DD." 형식으로 변환합니다
 function formatDate(iso: string) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -65,57 +135,58 @@ function formatDate(iso: string) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export const AdminUsersSection: React.FC = () => {
+  // 화면에 표시할 사용자 목록
   const [users, setUsers] = useState<UserProfile[]>([]);
+  // 데이터를 불러오는 중인지 여부 (로딩 스피너 표시 용도)
   const [loading, setLoading] = useState(true);
-  const [tableExists, setTableExists] = useState(true);
+  // 검색창에 입력한 텍스트
   const [searchQuery, setSearchQuery] = useState("");
+  // 역할 필터 ("all" | "admin" | "editor" | "viewer")
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  // 상태 필터 ("all" | "active" | "inactive")
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  // Dialogs
+  // 각 다이얼로그(팝업) 표시 여부 및 대상 사용자
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
   const [passwordResetUser, setPasswordResetUser] = useState<UserProfile | null>(null);
   const [actionMenuUser, setActionMenuUser] = useState<string | null>(null);
 
-  // ─── Data Fetching (Direct Supabase RDB Query) ──────────────────────────
+  // ─── 데이터 로드 (로컬스토리지에서 읽기) ──────────────────────────────────
 
+  // 로컬스토리지에서 사용자 목록을 불러오는 함수
+  // useCallback: 이 함수가 불필요하게 재생성되지 않도록 최적화
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        if (error.message?.includes("relation") || error.code === "42P01" || error.message?.includes("does not exist")) {
-          console.warn("[AdminUsers] public.users table does not exist yet");
-          setTableExists(false);
-          setUsers([]);
-          return;
-        }
-        throw new Error(error.message);
-      }
-      setTableExists(true);
-      setUsers(data || []);
+      // 짧은 지연을 두어 실제 로딩처럼 자연스럽게 표시
+      await new Promise((r) => setTimeout(r, 150));
+      const data = loadUsersFromStorage();
+      // 생성일 내림차순으로 정렬 (가장 최근 사용자가 위에 표시)
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setUsers(sorted);
     } catch (e: any) {
-      console.error("[AdminUsers] Fetch error:", e);
+      console.error("[AdminUsers] Load error:", e);
       toast.error(`사용자 목록 로딩 실패: ${e.message}`);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // 컴포넌트가 처음 화면에 나타날 때 데이터 로드
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  // ─── Filtered Users ─────────────────────────────────────────────────────
+  // ─── 필터링된 사용자 목록 ─────────────────────────────────────────────────
 
+  // 검색어 + 역할 필터 + 상태 필터를 모두 적용한 결과
   const filteredUsers = users.filter((u) => {
     const q = searchQuery.toLowerCase();
+    // 이메일, 이름, 부서 중 하나라도 검색어를 포함하면 통과
     const matchesSearch =
       !q ||
       u.email.toLowerCase().includes(q) ||
@@ -129,15 +200,18 @@ export const AdminUsersSection: React.FC = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // ─── Actions (All Direct Supabase Client — no Edge Function) ────────────
+  // ─── 데이터 변경 함수들 (모두 로컬스토리지 직접 수정) ────────────────────
 
+  // 사용자의 활성/비활성 상태를 반전시킵니다
   const handleToggleActive = async (user: UserProfile) => {
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ is_active: !user.is_active, updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-      if (error) throw new Error(error.message);
+      const all = loadUsersFromStorage();
+      const updated = all.map((u) =>
+        u.id === user.id
+          ? { ...u, is_active: !u.is_active, updated_at: new Date().toISOString() }
+          : u
+      );
+      saveUsersToStorage(updated);
       toast.success(`${user.name} 계정이 ${user.is_active ? "비활성화" : "활성화"}되었습니다.`);
       fetchUsers();
     } catch (e: any) {
@@ -146,14 +220,17 @@ export const AdminUsersSection: React.FC = () => {
     setActionMenuUser(null);
   };
 
+  // 사용자의 역할(admin/editor/viewer)을 변경합니다
   const handleRoleChange = async (user: UserProfile, newRole: string) => {
-    if (newRole === user.role) return;
+    if (newRole === user.role) return; // 이미 같은 역할이면 변경하지 않음
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ role: newRole, updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-      if (error) throw new Error(error.message);
+      const all = loadUsersFromStorage();
+      const updated = all.map((u) =>
+        u.id === user.id
+          ? { ...u, role: newRole as UserProfile["role"], updated_at: new Date().toISOString() }
+          : u
+      );
+      saveUsersToStorage(updated);
       toast.success(`${user.name}의 역할이 ${newRole}(으)로 변경되었습니다.`);
       fetchUsers();
     } catch (e: any) {
@@ -161,15 +238,14 @@ export const AdminUsersSection: React.FC = () => {
     }
   };
 
+  // 사용자를 영구 삭제합니다
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
     try {
-      // Delete from public.users table directly
-      const { error } = await supabase
-        .from("users")
-        .delete()
-        .eq("id", deletingUser.id);
-      if (error) throw new Error(error.message);
+      const all = loadUsersFromStorage();
+      // 삭제 대상 ID를 제외한 나머지만 저장
+      const filtered = all.filter((u) => u.id !== deletingUser.id);
+      saveUsersToStorage(filtered);
       toast.success(`${deletingUser.name} 계정이 삭제되었습니다.`);
       setDeletingUser(null);
       fetchUsers();
@@ -179,13 +255,14 @@ export const AdminUsersSection: React.FC = () => {
     }
   };
 
+  // 사용자 정보(이름, 역할, 부서)를 수정합니다
   const handleUpdateUser = async (id: string, updates: Record<string, any>) => {
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw new Error(error.message);
+      const all = loadUsersFromStorage();
+      const updated = all.map((u) =>
+        u.id === id ? { ...u, ...updates, updated_at: new Date().toISOString() } : u
+      );
+      saveUsersToStorage(updated);
       toast.success("사용자 정보가 수정되었습니다.");
       setEditingUser(null);
       fetchUsers();
@@ -194,8 +271,9 @@ export const AdminUsersSection: React.FC = () => {
     }
   };
 
-  // ─── Stats ──────────────────────────────────────────────────────────────
+  // ─── 통계 계산 ───────────────────────────────────────────────────────────
 
+  // 상단 통계 바에 표시할 숫자들
   const stats = {
     total: users.length,
     active: users.filter((u) => u.is_active).length,
@@ -209,7 +287,7 @@ export const AdminUsersSection: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* 헤더: 제목 + 새로고침/사용자추가 버튼 */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -244,7 +322,7 @@ export const AdminUsersSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Bar */}
+      {/* 통계 바: 전체/활성/비활성/역할별 카운트 */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-5">
         {[
           { label: "전체", value: stats.total, color: "bg-slate-100 text-slate-700" },
@@ -261,7 +339,7 @@ export const AdminUsersSection: React.FC = () => {
         ))}
       </div>
 
-      {/* Filters Bar */}
+      {/* 필터 바: 검색창 + 역할 필터 + 상태 필터 */}
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -297,46 +375,23 @@ export const AdminUsersSection: React.FC = () => {
         </span>
       </div>
 
-      {/* Users Table */}
+      {/* 사용자 테이블 */}
       <div className="flex-1 overflow-auto bg-white rounded-xl border border-gray-200">
         {loading ? (
+          // 로딩 중: 스피너 표시
           <div className="flex items-center justify-center h-48">
             <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
           </div>
-        ) : !tableExists ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-400 px-6">
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
-              <AlertTriangle className="w-7 h-7 text-amber-500" />
-            </div>
-            <p className="text-sm font-semibold text-gray-600 mb-1">public.users 테이블이 존재하지 않습니다</p>
-            <p className="text-xs text-gray-400 text-center max-w-md leading-relaxed">
-              Supabase SQL Editor에서{" "}
-              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">supabase-database-guide.sql</code>의
-              CREATE TABLE users 구문을 실행한 후 새로고침하세요.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1.5 mt-4"
-              onClick={fetchUsers}
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              다시 확인
-            </Button>
-          </div>
         ) : filteredUsers.length === 0 ? (
+          // 데이터가 없거나 검색 결과가 없을 때
           <div className="flex flex-col items-center justify-center h-48 text-gray-400">
             <Users className="w-10 h-10 mb-2 text-gray-200" />
             <p className="text-sm font-medium">
               {users.length === 0 ? "등록된 사용자가 없습니다" : "검색 결과가 없습니다"}
             </p>
-            {users.length === 0 && (
-              <p className="text-xs mt-1">
-                <code className="bg-gray-100 px-1.5 py-0.5 rounded">public.users</code> 테이블이 생성되었는지 확인하세요.
-              </p>
-            )}
           </div>
         ) : (
+          // 사용자 목록 테이블
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
               <tr>
@@ -357,6 +412,7 @@ export const AdminUsersSection: React.FC = () => {
                     key={user.id}
                     className={`hover:bg-gray-50/80 transition-colors ${!user.is_active ? "opacity-50" : ""}`}
                   >
+                    {/* 이메일 + 아바타 */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
@@ -365,7 +421,9 @@ export const AdminUsersSection: React.FC = () => {
                         <span className="text-gray-700 font-medium truncate">{user.email}</span>
                       </div>
                     </td>
+                    {/* 이름 */}
                     <td className="px-4 py-3 text-gray-700 font-medium">{user.name}</td>
+                    {/* 역할 변경 드롭다운 */}
                     <td className="px-4 py-3">
                       <div className="relative inline-block">
                         <select
@@ -380,7 +438,9 @@ export const AdminUsersSection: React.FC = () => {
                         <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none opacity-50" />
                       </div>
                     </td>
+                    {/* 부서 */}
                     <td className="px-4 py-3 text-gray-500">{user.department || "—"}</td>
+                    {/* 활성 상태 배지 */}
                     <td className="px-4 py-3 text-center">
                       {user.is_active ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold border border-green-200">
@@ -394,7 +454,9 @@ export const AdminUsersSection: React.FC = () => {
                         </span>
                       )}
                     </td>
+                    {/* 가입일 */}
                     <td className="px-4 py-3 text-gray-400">{formatDate(user.created_at)}</td>
+                    {/* 액션 메뉴 (점 세 개 버튼) */}
                     <td className="px-4 py-3 text-center">
                       <div className="relative inline-block">
                         <button
@@ -403,8 +465,10 @@ export const AdminUsersSection: React.FC = () => {
                         >
                           <MoreHorizontal className="w-4 h-4 text-gray-400" />
                         </button>
+                        {/* 드롭다운 메뉴 */}
                         {actionMenuUser === user.id && (
                           <>
+                            {/* 메뉴 바깥 클릭 시 닫기 */}
                             <div className="fixed inset-0 z-40" onClick={() => setActionMenuUser(null)} />
                             <div className="absolute right-0 top-full mt-1 z-50 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
                               <button
@@ -449,7 +513,7 @@ export const AdminUsersSection: React.FC = () => {
         )}
       </div>
 
-      {/* Dialogs */}
+      {/* 다이얼로그 (팝업 창) 렌더링 */}
       {showAddDialog && (
         <AddUserDialog
           onClose={() => setShowAddDialog(false)}
@@ -481,104 +545,25 @@ export const AdminUsersSection: React.FC = () => {
 };
 
 // =============================================================================
-// Add User Dialog — Edge Function (email_confirm:true), fallback to signUp()
+// 사용자 추가 다이얼로그
+// - 이메일, 이름, 역할, 부서를 입력받아 로컬스토리지에 새 사용자를 저장합니다
+// - 실제 서버/인증 없이 Mock 데이터만 생성합니다 (비밀번호 미저장)
 // =============================================================================
 
 function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  // 입력 폼 상태
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<string>("viewer");
   const [department, setDepartment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Auto-generated password: email prefix + "!@"
+  // 자동 생성 비밀번호: 이메일 아이디 + "!@" (Mock에서는 표시만 하고 실제 저장은 안 함)
   const emailPrefix = email.split("@")[0];
   const generatedPassword = emailPrefix ? `${emailPrefix}!@` : "";
   const isPasswordValid = generatedPassword.length >= 6;
 
-  /**
-   * Create a throwaway Supabase client for signUp so we don't
-   * overwrite the current admin session.
-   * Uses a unique storageKey to avoid "Multiple GoTrueClient" warnings.
-   */
-  const getIsolatedClient = () =>
-    createClient(`https://${projectId}.supabase.co`, publicAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        storageKey: `sb-isolated-adduser-${Date.now()}`,
-      },
-    });
-
-  /**
-   * Ensure a public.users profile row exists for the given auth user.
-   */
-  const ensureProfile = async (authId: string | null, userEmail: string, userName: string) => {
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", userEmail)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await supabase
-        .from("users")
-        .update({
-          auth_id: authId || existing.id,
-          name: userName,
-          role: role || "viewer",
-          department: department || null,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("email", userEmail);
-      if (error) console.warn("[AddUser] Profile update warning:", error.message);
-      return;
-    }
-
-    const { error } = await supabase.from("users").insert({
-      auth_id: authId,
-      email: userEmail,
-      name: userName,
-      role: role || "viewer",
-      department: department || null,
-      is_active: true,
-    });
-    if (error) console.warn("[AddUser] Profile insert warning:", error.message);
-  };
-
-  /**
-   * Try to confirm email via Edge Function (uses service_role_key).
-   * Returns true if confirmed successfully.
-   */
-  const tryConfirmEmail = async (userEmail: string): Promise<boolean> => {
-    try {
-      const token = await getAccessToken();
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(`${SERVER_BASE}/confirm-email`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: userEmail }),
-        signal: controller.signal,
-      });
-      clearTimeout(tid);
-      if (res.ok) {
-        console.log("[AddUser] Email confirmed via Edge Function for:", userEmail);
-        return true;
-      }
-      const data = await res.json().catch(() => ({}));
-      console.warn("[AddUser] confirm-email returned:", res.status, data);
-      return false;
-    } catch (e: any) {
-      console.warn("[AddUser] confirm-email endpoint unreachable:", e.message);
-      return false;
-    }
-  };
-
+  // 폼 제출 처리: 로컬스토리지에 새 사용자를 추가합니다
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!email || !name) {
@@ -593,133 +578,38 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
     setSubmitting(true);
 
     try {
-      // ── Strategy 1: Edge Function /signup (uses admin.createUser + email_confirm) ──
-      let edgeFnSuccess = false;
-      try {
-        const token = await getAccessToken();
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+      // 기존 사용자 목록을 로컬스토리지에서 불러옴
+      const all = loadUsersFromStorage();
 
-        const res = await fetch(`${SERVER_BASE}/signup`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, password: generatedPassword, name, role, department: department || null }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-
-        let data: any;
-        try { data = await res.json(); } catch { data = {}; }
-
-        if (res.ok) {
-          edgeFnSuccess = true;
-          console.log("[AddUser] Edge Function success:", data);
-          toast.success(
-            `${name} (${email}) 계정이 생성되었습니다.\n초기 비밀번호: ${generatedPassword}\n최초 로그인 시 비밀번호 변경이 필요합니다.`,
-            { duration: 8000 }
-          );
-          onCreated();
-          return;
-        } else {
-          console.warn("[AddUser] Edge Function returned error:", res.status, data);
-          const errMsg = (data.error || "").toLowerCase();
-          if (errMsg.includes("already") || errMsg.includes("registered") || errMsg.includes("exists")) {
-            console.log("[AddUser] User already exists in auth — ensuring profile is linked.");
-            // Also try to confirm their email in case it was previously unconfirmed
-            await tryConfirmEmail(email);
-            await ensureProfile(null, email, name);
-            toast.success(`${name} (${email}) 기존 계정에 프로필이 연결되었습니다.`);
-            onCreated();
-            edgeFnSuccess = true;
-            return;
-          }
-          throw new Error(data.error || `HTTP ${res.status}`);
-        }
-      } catch (edgeErr: any) {
-        if (edgeFnSuccess) return;
-        console.warn("[AddUser] Edge Function unavailable, falling back to signUp():", edgeErr.message);
-      }
-
-      // ── Strategy 2: Fallback — isolated supabase.auth.signUp() ──
-      // Use a throwaway client so we don't replace the admin's session.
-      console.log("[AddUser] Fallback: creating user via isolated signUp:", email);
-      const isolated = getIsolatedClient();
-      const { data: authData, error: authError } = await isolated.auth.signUp({
-        email,
-        password: generatedPassword,
-        options: { data: { name } },
-      });
-
-      if (authError) {
-        const errMsg = authError.message.toLowerCase();
-        if (errMsg.includes("already") || errMsg.includes("registered") || errMsg.includes("exists")) {
-          console.log("[AddUser] User already registered — ensuring profile is linked.");
-          await tryConfirmEmail(email);
-          await ensureProfile(null, email, name);
-          toast.success(`${name} (${email}) 기존 계정에 프로필이 연결되었습니다.`);
-          onCreated();
-          return;
-        }
-        // Signups disabled — provide actionable guidance
-        if (errMsg.includes("signups not allowed") || (errMsg.includes("signup") && errMsg.includes("not allowed"))) {
-          // Still save profile to public.users (without auth_id)
-          await ensureProfile(null, email, name);
-          toast.error(
-            `Auth 계정을 생성할 수 없습니다 (회원가입 비활성화 상태).\n\n` +
-            `프로필만 public.users에 저장되었습니다.\n` +
-            `Auth 계정은 Supabase Dashboard에서 생성하세요:\n` +
-            `Authentication → Users → Add user → Create new user\n` +
-            `(Email: ${email}, Auto Confirm User 체크)`,
-            { duration: 15000 }
-          );
-          onCreated();
-          return;
-        }
-        throw new Error(authError.message);
-      }
-
-      // Supabase may return a user with empty identities[] if the email
-      // is already taken (anti-enumeration). Treat it as "already exists".
-      if (authData.user && (!authData.user.identities || authData.user.identities.length === 0)) {
-        console.log("[AddUser] signUp returned empty identities — user likely already exists.");
-        await tryConfirmEmail(email);
-        await ensureProfile(null, email, name);
-        toast.success(`${name} (${email}) 기존 계정에 프로필이 연결되었습니다.`);
-        onCreated();
+      // 이미 같은 이메일이 존재하는지 확인
+      const alreadyExists = all.some((u) => u.email.toLowerCase() === email.toLowerCase());
+      if (alreadyExists) {
+        toast.error(`이미 등록된 이메일입니다: ${email}`);
         return;
       }
 
-      // Auth user created — ensure profile
-      const userId = authData.user?.id || null;
-      await ensureProfile(userId, email, name);
+      // 새 사용자 객체 생성 (고유 ID는 현재 시각 기반으로 생성)
+      const now = new Date().toISOString();
+      const newUser: UserProfile = {
+        id: `mock-${Date.now()}`,
+        auth_id: null, // Mock이므로 인증 연결 없음
+        email,
+        name,
+        role: role as UserProfile["role"],
+        department: department || null,
+        avatar_url: null,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+      };
 
-      // Try to auto-confirm email via Edge Function so the user can log in immediately
-      const isAlreadyConfirmed = authData.user?.email_confirmed_at || authData.session;
-      if (!isAlreadyConfirmed) {
-        const confirmed = await tryConfirmEmail(email);
-        if (confirmed) {
-          toast.success(
-            `${name} (${email}) 계정이 생성되었습니다.\n초기 비밀번호: ${generatedPassword}`,
-            { duration: 8000 }
-          );
-        } else {
-          toast.error(
-            `${name} (${email}) 계정이 생성되었지만, 이메일 인증에 실패했습니다.\n` +
-            `Edge Function이 응답하지 않아 이 사용자는 로그인할 수 없습니다.\n` +
-            `Supabase 대시보드 → Authentication → Users에서 이메일을 수동 확인하거나,\n` +
-            `Edge Function 배포 후 다시 시도하세요.`,
-            { duration: 12000 }
-          );
-        }
-      } else {
-        toast.success(
-          `${name} (${email}) 계정이 생성되었습니다.\n초기 비밀번호: ${generatedPassword}`,
-          { duration: 8000 }
-        );
-      }
+      // 기존 목록 앞에 추가하여 저장
+      saveUsersToStorage([newUser, ...all]);
+
+      toast.success(
+        `${name} (${email}) 계정이 생성되었습니다.\n초기 비밀번호 (참고용): ${generatedPassword}`,
+        { duration: 8000 }
+      );
       onCreated();
     } catch (err: any) {
       console.error("[AddUser] Error:", err);
@@ -732,6 +622,7 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
   return (
     <DialogBackdrop onClose={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+        {/* 다이얼로그 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-blue-600" />
@@ -743,6 +634,7 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
         </div>
 
         <div className="p-6 space-y-4">
+          {/* 이메일 입력 */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 mb-1">이메일 *</label>
             <input
@@ -753,6 +645,7 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
               className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
             />
           </div>
+          {/* 이름 입력 */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 mb-1">이름 *</label>
             <input
@@ -764,9 +657,9 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
             />
           </div>
 
-          {/* Auto-generated password preview */}
+          {/* 자동 생성 비밀번호 미리보기 (Mock에서는 참고용 표시만) */}
           <div>
-            <label className="block text-[11px] font-semibold text-gray-500 mb-1">초기 비밀번호 (자동 생성)</label>
+            <label className="block text-[11px] font-semibold text-gray-500 mb-1">초기 비밀번호 (자동 생성, 참고용)</label>
             <div className="w-full px-3 py-2 text-xs border border-gray-100 rounded-lg bg-gray-50 text-gray-500 font-mono tracking-wide">
               {generatedPassword || <span className="text-gray-300 font-sans">이메일을 입력하면 자동 생성됩니다</span>}
             </div>
@@ -776,11 +669,12 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
                 <span className="text-red-500">(이메일 아이디가 너무 짧습니다 — 최소 4자 필요)</span>
               )}
               {generatedPassword && isPasswordValid && (
-                <span className="text-green-600">— 최초 로그인 시 변경 필수</span>
+                <span className="text-green-600">— Mock 데이터이므로 실제 로그인에는 사용되지 않습니다</span>
               )}
             </p>
           </div>
 
+          {/* 역할 + 부서 선택 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-gray-500 mb-1">역할</label>
@@ -806,6 +700,7 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
           </div>
 
+          {/* 취소/생성 버튼 */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" className="text-xs" onClick={onClose}>
               취소
@@ -827,7 +722,9 @@ function AddUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
 }
 
 // =============================================================================
-// Edit User Dialog
+// 사용자 정보 수정 다이얼로그
+// - 이름, 역할, 부서를 변경할 수 있습니다
+// - 이메일은 변경 불가 (읽기 전용으로 표시)
 // =============================================================================
 
 function EditUserDialog({
@@ -844,6 +741,7 @@ function EditUserDialog({
   const [department, setDepartment] = useState(user.department || "");
   const [submitting, setSubmitting] = useState(false);
 
+  // 폼 제출 시 부모 컴포넌트의 handleUpdateUser 호출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -864,6 +762,7 @@ function EditUserDialog({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* 이메일은 수정 불가 */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 mb-1">이메일</label>
             <input type="email" value={user.email} disabled className="w-full px-3 py-2 text-xs border border-gray-100 rounded-lg bg-gray-50 text-gray-400" />
@@ -900,7 +799,8 @@ function EditUserDialog({
 }
 
 // =============================================================================
-// Delete Confirm Dialog
+// 사용자 삭제 확인 다이얼로그
+// - "DELETE" 텍스트를 직접 입력해야 삭제 버튼이 활성화됩니다 (실수 방지)
 // =============================================================================
 
 function DeleteConfirmDialog({
@@ -912,6 +812,7 @@ function DeleteConfirmDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  // 삭제 확인을 위해 "DELETE" 텍스트를 입력하는 상태
   const [confirmText, setConfirmText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -964,7 +865,9 @@ function DeleteConfirmDialog({
 }
 
 // =============================================================================
-// Password Reset Dialog
+// 비밀번호 변경 다이얼로그
+// - Mock 데이터 환경이므로 실제 비밀번호를 변경하지 않습니다
+// - 입력값을 검증한 후 성공 토스트 메시지만 표시합니다
 // =============================================================================
 
 function PasswordResetDialog({
@@ -979,8 +882,10 @@ function PasswordResetDialog({
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // 비밀번호가 6자 이상이고 확인 비밀번호와 일치해야 유효
   const isValid = newPassword.length >= 6 && newPassword === confirmPassword;
 
+  // Mock 처리: 실제 변경 없이 성공 메시지만 표시
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) {
@@ -995,28 +900,9 @@ function PasswordResetDialog({
     setSubmitting(true);
 
     try {
-      // Call Edge Function — uses service_role_key via auth.admin.updateUserById()
-      const token = await getAccessToken();
-      const res = await fetch(`${SERVER_BASE}/admin/users/${user.id}/reset-password`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ password: newPassword }),
-      });
-
-      let data: any;
-      try { data = await res.json(); } catch { data = {}; }
-
-      if (!res.ok) {
-        const errMsg = data.error || `HTTP ${res.status}`;
-        console.error("[PasswordReset] Server error:", res.status, data);
-        throw new Error(errMsg);
-      }
-
-      console.log("[PasswordReset] Success:", data);
-      toast.success(`${user.name} (${user.email})의 비밀번호가 변경되었습니다.`);
+      // Mock 환경: 짧은 지연 후 성공 처리 (실제 서버 요청 없음)
+      await new Promise((r) => setTimeout(r, 400));
+      toast.success(`${user.name} (${user.email})의 비밀번호가 변경되었습니다. (Mock)`);
       onClose();
     } catch (err: any) {
       console.error("[PasswordReset] Error:", err);
@@ -1039,7 +925,7 @@ function PasswordResetDialog({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Target user info */}
+          {/* 대상 사용자 정보 표시 */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
               {user.name?.charAt(0)?.toUpperCase() || "?"}
@@ -1048,22 +934,21 @@ function PasswordResetDialog({
               <p className="text-xs font-semibold text-slate-700 truncate">{user.name}</p>
               <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
             </div>
-            {!user.auth_id && (
-              <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold border border-amber-200 shrink-0">
-                auth 미연결
-              </span>
-            )}
+            {/* Mock 환경에서는 모든 사용자가 auth 미연결 상태 */}
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-semibold border border-blue-200 shrink-0">
+              Mock 모드
+            </span>
           </div>
 
-          {!user.auth_id && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-[11px] text-amber-700 leading-relaxed">
-                <strong>주의:</strong> 이 사용자는 auth_id가 연결되어 있지 않아 비밀번호를 변경할 수 없습니다.
-                먼저 사용자를 Auth 시스템에 등록해 주세요.
-              </p>
-            </div>
-          )}
+          {/* Mock 안내 메시지 */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-[11px] text-blue-700 leading-relaxed">
+              <strong>안내:</strong> 현재 Mock 데이터 모드로 운영 중입니다.
+              비밀번호 변경은 기록되지 않으며, 확인 후 성공 처리됩니다.
+            </p>
+          </div>
 
+          {/* 새 비밀번호 입력 */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 mb-1">새 비밀번호 *</label>
             <div className="relative">
@@ -1073,8 +958,7 @@ function PasswordResetDialog({
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="최소 6자"
                 minLength={6}
-                disabled={!user.auth_id}
-                className="w-full px-3 py-2 pr-16 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:bg-gray-50 disabled:text-gray-300"
+                className="w-full px-3 py-2 pr-16 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
               <button
                 type="button"
@@ -1089,6 +973,7 @@ function PasswordResetDialog({
             )}
           </div>
 
+          {/* 비밀번호 확인 입력 */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 mb-1">비밀번호 확인 *</label>
             <input
@@ -1096,21 +981,21 @@ function PasswordResetDialog({
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="비밀번호 다시 입력"
-              disabled={!user.auth_id}
-              className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 disabled:bg-gray-50 disabled:text-gray-300"
+              className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
             />
             {confirmPassword.length > 0 && newPassword !== confirmPassword && (
               <p className="text-[10px] text-red-500 mt-1">비밀번호가 일치하지 않습니다</p>
             )}
           </div>
 
+          {/* 취소/변경 버튼 */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="outline" size="sm" className="text-xs" onClick={onClose}>취소</Button>
             <Button
               type="submit"
               size="sm"
               className="text-xs bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
-              disabled={!isValid || submitting || !user.auth_id}
+              disabled={!isValid || submitting}
             >
               {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
               {submitting ? "변경 중..." : "비밀번호 변경"}
@@ -1123,13 +1008,16 @@ function PasswordResetDialog({
 }
 
 // =============================================================================
-// Shared Backdrop
+// 공통 다이얼로그 배경 컴포넌트
+// - 반투명 검정 오버레이를 깔고, 바깥 클릭 시 다이얼로그를 닫습니다
 // =============================================================================
 
 function DialogBackdrop({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* 배경 오버레이: 클릭하면 닫기 */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      {/* 다이얼로그 콘텐츠: 클릭 이벤트가 배경으로 전달되지 않도록 차단 */}
       <div className="relative z-10" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
         {children}
       </div>

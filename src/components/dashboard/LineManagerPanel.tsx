@@ -340,7 +340,7 @@ export function LineManagerPanel({
                 {lines.length} items
               </Badge>
             </div>
-            <p className="text-xs text-gray-500 shrink-0">Stored in Supabase KV.</p>
+            <p className="text-xs text-gray-500 shrink-0">Stored in localStorage.</p>
 
             <ScrollArea className="h-[450px] pr-3 -mr-3">
               <div className="space-y-2 pb-4">

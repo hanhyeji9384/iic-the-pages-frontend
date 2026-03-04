@@ -1,5 +1,9 @@
+// ============================================================
+// ForcePasswordChange — Mock 비밀번호 변경 페이지
+// Supabase 제거됨. 비밀번호 변경 UI만 유지하고 실제 서버 호출 없이 처리합니다.
+// ============================================================
+
 import React, { useState } from "react";
-import { supabase } from "../../utils/supabase/client";
 import { KeyRound, Lock, Loader2, ShieldAlert, Eye, EyeOff } from "lucide-react";
 import { titleLogo } from "../../utils/brand-assets";
 import { toast } from "sonner";
@@ -36,37 +40,18 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
 
     setIsLoading(true);
 
-    try {
-      // Step 1: Update the password AND mark password_changed in user_metadata
-      const { error: updateErr } = await supabase.auth.updateUser({
-        password: newPassword,
-        data: { password_changed: true },
-      });
+    // Mock: 짧은 지연 후 성공 처리
+    await new Promise((r) => setTimeout(r, 500));
 
-      if (updateErr) {
-        console.error("[ForcePasswordChange] updateUser error:", updateErr.message);
-        throw new Error(updateErr.message);
-      }
-
-      console.log("[ForcePasswordChange] Password updated + password_changed flag set for:", userEmail);
-
-      // Note: Edge Function flag clearing is no longer needed.
-      // We use user_metadata.password_changed instead of app_metadata.must_change_password.
-
-      toast.success("비밀번호가 성공적으로 변경되었습니다.");
-      onPasswordChanged();
-    } catch (err: any) {
-      console.error("[ForcePasswordChange] Error:", err);
-      setError(`비밀번호 변경 실패: ${err.message}`);
-    } finally {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
+    toast.success("비밀번호가 성공적으로 변경되었습니다.");
+    onPasswordChanged();
   };
 
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="w-full max-w-[440px] mx-4">
-        {/* Logo */}
+        {/* 로고 */}
         <div className="flex justify-center mb-8">
           <img
             src={titleLogo}
@@ -75,9 +60,9 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
           />
         </div>
 
-        {/* Card */}
+        {/* 카드 */}
         <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-gray-100 overflow-hidden">
-          {/* Warning Banner */}
+          {/* 경고 배너 */}
           <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 flex items-start gap-3">
             <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
@@ -86,14 +71,12 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
               </p>
               <p className="text-[12px] text-amber-700 mt-1 leading-relaxed">
                 안전한 사용을 위해 새 비밀번호로 변경해 주세요.
-                <br />
-                비밀번호를 변경하기 전까지 대시보드에 접근할 수 없습니다.
               </p>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Current user info */}
+            {/* 현재 사용자 정보 */}
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
                 {userEmail?.charAt(0)?.toUpperCase() || "?"}
@@ -104,7 +87,7 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
               </div>
             </div>
 
-            {/* New Password */}
+            {/* 새 비밀번호 */}
             <div className="space-y-1.5">
               <label className="block text-[12px] font-medium text-gray-500 uppercase tracking-wider">
                 New Password
@@ -122,8 +105,8 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
                   required
                   minLength={6}
                   autoFocus
-                  className="w-full pl-10 pr-12 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[14px] text-gray-900 placeholder-gray-400 
-                    focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 
+                  className="w-full pl-10 pr-12 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[14px] text-gray-900 placeholder-gray-400
+                    focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300
                     transition-all duration-200"
                 />
                 <button
@@ -139,7 +122,7 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
               )}
             </div>
 
-            {/* Confirm Password */}
+            {/* 비밀번호 확인 */}
             <div className="space-y-1.5">
               <label className="block text-[12px] font-medium text-gray-500 uppercase tracking-wider">
                 Confirm Password
@@ -155,8 +138,8 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
                   }}
                   placeholder="비밀번호 다시 입력"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[14px] text-gray-900 placeholder-gray-400 
-                    focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[14px] text-gray-900 placeholder-gray-400
+                    focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300
                     transition-all duration-200"
                 />
               </div>
@@ -168,20 +151,20 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
               )}
             </div>
 
-            {/* Error Message */}
+            {/* 에러 메시지 */}
             {error && (
               <p className="text-[12px] text-red-500 bg-red-50 rounded-lg px-3 py-2 border border-red-100">
                 {error}
               </p>
             )}
 
-            {/* Submit Button */}
+            {/* 제출 버튼 */}
             <button
               type="submit"
               disabled={isLoading || !isValid}
-              className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 
-                text-white text-[14px] font-medium rounded-lg 
-                transition-all duration-200 
+              className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300
+                text-white text-[14px] font-medium rounded-lg
+                transition-all duration-200
                 flex items-center justify-center gap-2
                 cursor-pointer disabled:cursor-not-allowed"
             >
@@ -200,7 +183,7 @@ export const ForcePasswordChange: React.FC<ForcePasswordChangeProps> = ({
           </form>
         </div>
 
-        {/* Footer */}
+        {/* 하단 문구 */}
         <p className="text-center text-[11px] text-gray-400 mt-6">
           비밀번호 변경 후 대시보드에 접근할 수 있습니다
         </p>

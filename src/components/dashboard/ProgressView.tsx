@@ -11,7 +11,7 @@ import {
   Area,
 } from "recharts";
 import { Store } from "../../types";
-import { dataClient } from "../../utils/supabaseDataClient";
+import { dataClient } from "../../utils/dataClient";
 import { toast } from "sonner";
 import { X, Target, Save, Plus, Trash2, Globe, Building2, Calendar } from "lucide-react";
 

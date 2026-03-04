@@ -132,7 +132,7 @@ function AdminOverview() {
         {[
           { label: "RDB Tables", value: "14", color: "bg-blue-500" },
           { label: "Active Mode", value: "RDB", color: "bg-emerald-500" },
-          { label: "Auth Provider", value: "Supabase", color: "bg-violet-500" },
+          { label: "Auth Provider", value: "Mock", color: "bg-violet-500" },
           { label: "Role System", value: "Active", color: "bg-amber-500" },
         ].map((stat) => (
           <div
@@ -160,10 +160,8 @@ function AdminOverview() {
           RDB-Only Mode Active
         </h3>
         <p className="text-xs text-blue-700 leading-relaxed">
-          모든 데이터는 Supabase RDB 테이블을 직접 쿼리합니다.
-          KV Store(<code className="bg-blue-100 px-1 py-0.5 rounded text-[11px]">kv_store_ed83bf0f</code>)는
-          마이그레이션 완료 후 아카이브 상태입니다.
-          Edge Function은 파일 업로드와 사용자 관리(Auth Admin)에만 사용됩니다.
+          모든 데이터는 localStorage 기반 Mock 데이터로 관리됩니다.
+          실제 서버 연결 없이 프론트엔드만으로 동작합니다.
         </p>
       </div>
     </div>
