@@ -47,6 +47,7 @@ export interface Store {
   location: {
     city: string;
     country: string;
+    address?: string; // 상세 주소
     lat: number;  // 위도 (지도에서 세로 좌표)
     lng: number;  // 경도 (지도에서 가로 좌표)
   };
@@ -76,7 +77,10 @@ export interface Store {
     | 'Planned'
     | 'Confirmed'
     | 'Signed'
-    | 'Construction';
+    | 'Construction'
+    | 'Negotiation'
+    | 'Reject'
+    | 'Pending';
 
   /** 파이프라인이 해당 연도에 기록된 연도 */
   statusYear?: number;
@@ -87,7 +91,7 @@ export interface Store {
    * competitor: 경쟁사 브랜드
    * preferred: 인접/선호 브랜드
    */
-  brandCategory?: 'iic' | 'competitor' | 'preferred';
+  brandCategory?: 'iic' | 'competitor' | 'preferred' | 'smartglass';
 
   /** 예상 또는 실제 오픈 날짜 (YYYY-MM-DD 형식) */
   openDate?: string;
@@ -247,6 +251,9 @@ export const PIPELINE_STATUS_COLORS: Record<string, string> = {
   Construction: '#0ea5e9',
   Open: '#7FC7D9',         // 청록 (오픈)
   Close: '#94a3b8',        // 회색 (폐점)
+  Negotiation: '#f59e0b',  // 앰버 (협상 중)
+  Reject: '#ef4444',       // 빨강 (거절)
+  Pending: '#a855f7',      // 보라 (보류)
 };
 
 // ----------------------------------------------------------

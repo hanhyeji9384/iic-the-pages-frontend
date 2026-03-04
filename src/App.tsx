@@ -21,6 +21,14 @@ import { LineManagerPanel } from './components/dashboard/LineManagerPanel';
 import { AddEntityPanel } from './components/dashboard/AddEntityPanel';
 import { TrafficManagerPanel, TrafficZone } from './components/dashboard/TrafficManagerPanel';
 import { SettingsDialog } from './components/dashboard/SettingsDialog';
+// 인증 관련 컴포넌트 (로그인, 비밀번호 변경, 관리자 페이지)
+import { LoginPage } from './components/dashboard/LoginPage';
+import { ForcePasswordChange } from './components/dashboard/ForcePasswordChange';
+import { AdminPage } from './components/dashboard/AdminPage';
+// Progress View (목표 대비 진행률 대시보드)
+import { ProgressView } from './components/dashboard/ProgressView';
+// Supabase 인증 클라이언트
+import { supabase } from './utils/supabase/client';
 import {
   Store,
   FilterState,
@@ -40,6 +48,28 @@ import { toast } from 'sonner';
 // ============================================================
 
 export default function App() {
+  // ──────────────────────────────────────────────────────────
+  // 인증(Authentication) 상태
+  // ──────────────────────────────────────────────────────────
+
+  /** 사용자 인증 완료 여부 (로그인 성공 시 true) */
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  /** 인증 상태 확인 중 여부 (앱 시작 시 세션 확인) */
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  /** 강제 비밀번호 변경 화면 표시 여부 (초기 로그인 시) */
+  const [showForcePasswordChange, setShowForcePasswordChange] = useState(false);
+
+  /** 관리자 페이지 표시 여부 */
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  /** 현재 로그인한 사용자 이메일 */
+  const [userEmail, setUserEmail] = useState('');
+
+  /** 현재 로그인한 사용자 역할 (admin/editor/viewer) */
+  const [userRole, setUserRole] = useState('viewer');
+
   // ──────────────────────────────────────────────────────────
   // 네비게이션 상태
   // ──────────────────────────────────────────────────────────
@@ -300,10 +330,50 @@ export default function App() {
   };
 
   // ──────────────────────────────────────────────────────────
-  // 앱 시작 시 데이터 초기화 (최초 1회 실행)
+  // 앱 시작 시 인증 세션 확인
+  // 이미 로그인된 세션이 있으면 자동 로그인합니다.
   // ──────────────────────────────────────────────────────────
 
   React.useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setIsAuthenticated(true);
+          setUserEmail(session.user.email || '');
+          // user_metadata에서 역할 확인
+          const role = session.user.user_metadata?.role || 'viewer';
+          setUserRole(role);
+        }
+      } catch (e) {
+        console.error('[Auth] Session check failed:', e);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+    checkSession();
+
+    // 인증 상태 변경 리스너 (로그아웃, 토큰 갱신 등)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+      if (session?.user) {
+        setIsAuthenticated(true);
+        setUserEmail(session.user.email || '');
+      } else {
+        setIsAuthenticated(false);
+        setUserEmail('');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ──────────────────────────────────────────────────────────
+  // 앱 시작 시 데이터 초기화 (인증 완료 후 1회 실행)
+  // ──────────────────────────────────────────────────────────
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
     const initData = async () => {
       try {
         // 서버 DB가 비어있으면 초기 데이터 심기
@@ -318,7 +388,7 @@ export default function App() {
       api.getEntities().then(setSavedEntities);
     };
     initData();
-  }, []); // 빈 배열: 컴포넌트가 처음 화면에 나타날 때 한 번만 실행
+  }, [isAuthenticated]); // 인증 완료 후 데이터 로드
 
   // ──────────────────────────────────────────────────────────
   // 브랜드 목록 업데이트 핸들러
@@ -991,6 +1061,12 @@ export default function App() {
           />
         );
 
+      // ── Progress View (목표 대비 진행률) ──
+      case 'ProgressView':
+        return (
+          <ProgressView stores={allStores} />
+        );
+
       // ── Progress Board ──
       case 'ProgressBoard':
         return (
@@ -1222,8 +1298,61 @@ export default function App() {
         min-[2560px]:text-[16px]
       `}
     >
-      {/* ───── 랜딩 페이지 ───── */}
-      {showLanding ? (
+      {/* ───── 인증 로딩 중 ───── */}
+      {isAuthLoading ? (
+        <div className="flex items-center justify-center h-screen w-screen bg-gradient-to-br from-gray-50 to-gray-100">
+          <div className="text-center space-y-4">
+            <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-gray-400">Loading...</p>
+          </div>
+        </div>
+      ) : !isAuthenticated ? (
+        /* ───── 로그인 페이지 ───── */
+        <LoginPage
+          onLoginSuccess={(opts) => {
+            setIsAuthenticated(true);
+            // 초기 비밀번호인 경우 강제 비밀번호 변경
+            if (opts?.mustChangePassword) {
+              setShowForcePasswordChange(true);
+            }
+            // 세션에서 이메일 가져오기
+            supabase.auth.getSession().then(({ data: { session } }: any) => {
+              if (session?.user?.email) {
+                setUserEmail(session.user.email);
+              }
+            });
+          }}
+        />
+      ) : showForcePasswordChange ? (
+        /* ───── 강제 비밀번호 변경 ───── */
+        <ForcePasswordChange
+          userEmail={userEmail}
+          onPasswordChanged={() => {
+            setShowForcePasswordChange(false);
+          }}
+        />
+      ) : showAdmin ? (
+        /* ───── 관리자 페이지 ───── */
+        <div className="max-w-[2560px] w-full mx-auto h-full flex flex-col bg-white shadow-2xl">
+          <Header
+            activeLevel1={activeLevel1}
+            activeLevel2={activeLevel2}
+            activeTab={activeTab}
+            onLevel1Change={handleLevel1Change}
+            onLevel2Change={handleLevel2Change}
+            onTabChange={handleTabChange}
+            totalStores={totalIICCount}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            onLogoClick={handleLogoClick}
+          />
+          <AdminPage
+            onBack={() => setShowAdmin(false)}
+            userName={userEmail.split('@')[0]}
+            userRole={userRole}
+          />
+        </div>
+      ) : showLanding ? (
+        /* ───── 랜딩 페이지 ───── */
         <LandingPage
           onEnter={(level1) => {
             setShowLanding(false);
